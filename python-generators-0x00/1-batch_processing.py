@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import mysql.connector
+import sys
 from typing import Dict, Generator, List
 
 def stream_users_in_batches(batch_size: int) -> Generator[List[Dict[str, str|int]], None, None]:
@@ -27,16 +28,15 @@ def stream_users_in_batches(batch_size: int) -> Generator[List[Dict[str, str|int
         # Execute the query
         cursor.execute("SELECT * FROM user_data")
         
-        # Fetch rows in batches
-        while True:
-            batch = cursor.fetchmany(batch_size)
-            if not batch:
-                break
+        # Fetch rows in batches using yield
+        batch = cursor.fetchmany(batch_size)
+        while batch:
             yield batch
+            batch = cursor.fetchmany(batch_size)
             
     except mysql.connector.Error as err:
         print(f"Database error: {err}", file=sys.stderr)
-        yield None
+        yield []  # Yield empty list on error
     finally:
         # Clean up resources
         try:
@@ -59,16 +59,18 @@ def batch_processing(batch_size: int = 50) -> Generator[Dict[str, str|int], None
     Yields:
         dict: Users over 25 years old one by one
     """
-    # Loop through batches
-    for batch in stream_users_in_batches(batch_size):
-        # Filter users over 25 in the current batch
+    # Get batch generator
+    batches = stream_users_in_batches(batch_size)
+    
+    # Process each batch
+    for batch in batches:
+        # Filter and yield users over 25
         for user in batch:
             if user['age'] > 25:
                 yield user
 
 
 if __name__ == "__main__":
-    import sys
     try:
         # Print processed users in batches of specified size
         for user in batch_processing(50):
